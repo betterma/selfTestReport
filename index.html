@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>需求管理工具</title>
+    <!-- 引入Quill富文本编辑器 -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #ffffff;
+            color: #333333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eeeeee;
+            padding-bottom: 20px;
+        }
+        .dynamic-section {
+            margin: 20px 0;
+            border: 1px solid #eeeeee;
+            padding: 15px;
+            border-radius: 3px;
+        }
+        .image-upload {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            gap: 10px;
+        }
+        .image-preview {
+            max-width: 150px;
+            max-height: 100px;
+            border: 1px solid #eeeeee;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 0 5px;
+            background-color: transparent;
+            color: #333333;
+            border: 1px solid #333333;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background-color: #f8f8f8;
+        }
+        .delete-btn {
+            color: #ff4d4d;
+            border-color: #ff4d4d;
+        }
+        /* 覆盖Quill编辑器默认样式 */
+        .ql-toolbar {
+            border-color: #cccccc !important;
+        }
+        .ql-container {
+            border-color: #cccccc !important;
+            min-height: 150px;
+        }
+        .ql-editor {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <!-- 容器结构与之前保持一致 -->
+    <div class="container">
+        <!-- 需求翻译 -->
+        <div class="section">
+            <h3>需求翻译</h3>
+            <div id="editor-translate"></div>
+        </div>
+
+        <!-- 需求改动点 -->
+        <div class="section">
+            <h3>需求改动点</h3>
+            <div id="dynamic-container"></div>
+            <button onclick="addNewSection()">新增改动点</button>
+        </div>
+
+        <!-- 底部栏 -->
+        <div class="button-group">
+            <button onclick="copyAllContent()">复制全部内容</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script>
+        // 初始化富文本编辑器
+        const translateEditor = new Quill('#editor-translate', {
+            theme: 'snow',
+            modules: { toolbar: true }
+        });
+
+        let sectionCount = 0;
+
+        // 添加新改动点
+        function addNewSection() {
+            sectionCount++;
+            const sectionId = `section-${sectionCount}`;
+            const sectionHTML = `
+                <div class="dynamic-section" id="${sectionId}">
+                    <div class="editor-${sectionId}"></div>
+                    <div class="image-upload">
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this)">
+                        <button onclick="removeSection('${sectionId}')" class="delete-btn">删除</button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('dynamic-container').insertAdjacentHTML('beforeend', sectionHTML);
+            
+            // 初始化新富文本编辑器
+            new Quill(`.editor-${sectionId}`, {
+                theme: 'snow',
+                modules: { toolbar: true }
+            });
+        }
+
+        // 处理图片上传
+        function handleImageUpload(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.className = 'image-preview';
+                    img.src = e.target.result;
+                    input.parentElement.appendChild(img);
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // 删除区块
+        function removeSection(sectionId) {
+            document.getElementById(sectionId).remove();
+        }
+
+        async function copyAllContent() {
+            try {
+                const container = document.createElement('div');
+                
+                // 克隆需求翻译内容
+                const translateClone = translateEditor.root.cloneNode(true);
+                container.appendChild(translateClone);
+        
+                // 处理所有改动点
+                const sections = Array.from(document.querySelectorAll('.dynamic-section'));
+                sections.forEach(section => {
+                    const clone = section.cloneNode(true);
+                    
+                    // 清理操作按钮
+                    clone.querySelectorAll('button').forEach(btn => btn.remove());
+                    
+                    // 转换图片显示（关键修复部分）
+                    clone.querySelectorAll('.image-upload').forEach(uploadDiv => {
+                        const input = uploadDiv.querySelector('input[type="file"]');
+                        
+                        // 直接提升现有图片的显示尺寸
+                        uploadDiv.querySelectorAll('img').forEach(img => {
+                            img.style.maxWidth = '100%';
+                            img.classList.remove('image-preview'); // 移除预览限制
+                        });
+                        
+                        // 仅移除输入框，保留原始图片
+                        input.remove();
+                    });
+        
+                    container.appendChild(clone);
+                });
+        
+                // 创建两种格式内容
+                const htmlContent = container.innerHTML;
+                const textContent = getTextVersion(container);
+        
+                // 复制到剪贴板
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        // 'text/plain': new Blob([textContent], { type: 'text/plain' }),
+                        'text/html': new Blob([htmlContent], { type: 'text/html' })
+                    })
+                ]);
+                alert('内容已复制！粘贴到Word/邮件等富文本编辑器可见完整图片');
+            } catch (err) {
+                console.error('复制失败:', err);
+                alert('复制失败，请使用Chrome最新版并确保图片小于2MB');
+            }
+        }
+        
+        function getTextVersion() {
+            let text = '=== 需求翻译 ===\n';
+            text += translateEditor.getText() + '\n\n';
+        
+            document.querySelectorAll('.dynamic-section').forEach((section, index) => {
+                text += `=== 改动点 ${index + 1} ===\n`;
+                text += section.querySelector('.ql-editor').innerText + '\n';
+                text += `包含 ${section.querySelectorAll('img').length} 张图片\n\n`;
+            });
+        
+            return text;
+        }
+        </script>
+</body>
+</html>
